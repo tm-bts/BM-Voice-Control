@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1A1A1A">
+<title>B&M 测量 Mobile</title>
+<style>
+  :root{ --dark:#1A1A1A; --accent:#6B8E23; --light:#F5F8F0; --summary:#E8F2D8; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;}
+  body{font-family:-apple-system,'Segoe UI','Microsoft YaHei',Arial,sans-serif;background:#f3f4f0;color:#1A1A1A;font-size:16px;padding-bottom:40px;}
+  header{position:sticky;top:0;z-index:10;background:var(--dark);color:#fff;padding:14px 16px;}
+  header h1{margin:0;font-size:17px;}
+  header p{margin:3px 0 0;font-size:12px;color:#cfd8c0;}
+  .wrap{padding:14px;max-width:560px;margin:0 auto;}
+  .card{background:#fff;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);}
+  .step{font-size:13px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px;}
+  label{font-size:14px;font-weight:600;display:block;margin:0 0 6px;}
+  input,select,textarea{width:100%;font-size:16px;padding:12px;border:1px solid #ccc;border-radius:10px;font-family:inherit;background:#fff;}
+  textarea{min-height:90px;}
+  .btn{display:block;width:100%;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;margin-top:10px;}
+  .btn.secondary{background:#fff;color:var(--accent);border:2px solid var(--accent);}
+  .btn.dark{background:var(--dark);}
+  .btn:disabled{opacity:.45;}
+  .btn.rec{background:#c0392b;font-size:18px;padding:18px;}
+  .btn.rec.active{background:#7d1f15;}
+  .muted{color:#777;font-size:12px;line-height:1.4;margin-top:8px;}
+  #status{font-size:13px;margin-top:10px;min-height:18px;}
+  .danger{color:#b00;}
+  audio{width:100%;margin-top:12px;}
+  .chk{display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:400;font-size:14px;}
+  .chk input{width:auto;}
+  /* window cards */
+  .wcard{border:1px solid #e2e6da;border-radius:12px;padding:12px;margin-bottom:12px;background:var(--light);}
+  .wcard .wh{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .wcard .wh b{font-size:15px;color:var(--dark);}
+  .wcard .del{background:none;border:none;color:#b00;font-size:13px;width:auto;padding:4px;}
+  .fld{margin-bottom:8px;}
+  .fld:last-child{margin-bottom:0;}
+  .two{display:flex;gap:8px;}
+  .two .fld{flex:1;}
+  .lbl{font-size:11px;color:#5a6b3a;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px;display:block;}
+</style>
+</head>
+<body>
+<header>
+  <h1>B&M 倍美窗帘 · 测量 Mobile</h1>
+  <p>录音 → 识别 → 核对窗户 → 导出</p>
+</header>
+
+<div class="wrap">
+
+  <div class="card">
+    <div class="step">① OpenAI Key</div>
+    <input type="password" id="apiKey" placeholder="sk-...">
+    <label class="chk"><input type="checkbox" id="remember"> 记住此设备 Remember on this phone</label>
+    <button class="btn secondary" id="clearKey" type="button" style="margin-top:8px;">忘记 Forget saved key</button>
+    <p class="muted">Saved only on this phone, sent only to OpenAI. Tap Forget on shared devices.</p>
+  </div>
+
+  <div class="card">
+    <div class="step">② 录音 Recording</div>
+    <button class="btn rec" id="recBtn" type="button">● 开始录音 Record</button>
+    <p class="muted" style="text-align:center;">— 或 / or —</p>
+    <label>上传录音文件 Upload a memo</label>
+    <input type="file" id="fileInput" accept="audio/*" capture>
+    <audio id="player" controls style="display:none;"></audio>
+    <button class="btn" id="transcribeBtn" disabled>识别 Transcribe ▶</button>
+    <div id="status"></div>
+    <p class="muted" id="micNote"></p>
+  </div>
+
+  <div class="card">
+    <div class="step">③ 文字 Transcript</div>
+    <textarea id="transcript" placeholder="识别出的中文会显示在这里，可手动修改。"></textarea>
+    <button class="btn secondary" id="parseBtn">拆分窗户 Parse ▼</button>
+  </div>
+
+  <div class="card">
+    <div class="step">④ 窗户 Windows</div>
+    <div id="cards"></div>
+    <button class="btn secondary" id="addRow" type="button">+ 添加窗户 Add window</button>
+    <button class="btn dark" id="exportBtn" type="button">导出 CSV ⤓</button>
+  </div>
+
+</div>
+
+<script>
+const VOCAB = {
+  floor: ["地下一楼","一楼","二楼","三楼"],
+  room: ["前厅","书房","走廊","客厅","餐厅","厨房","中式厨房","储藏室","加州阳光房","客卧卫生间","客卧更衣室","客卧","楼梯","主卧浴室","主卧卫生间","主卧更衣室","主卧阳台","主卧","洗衣房","阳台","公共卫生间","大厅","办公室","会议室"],
+  type: ["门窗合并","双窗合并","三窗合并","推拉门","拉门","窗","门"],
+};
+const VOCAB_PROMPT = "B&M 窗帘测量。宽 高 进深 层高 下一个 幺 两 "
+  + VOCAB.floor.join(" ")+" "+VOCAB.room.join(" ")+" "+VOCAB.type.join(" ")
+  + " 内装 外装 单层卷帘 斑马帘 蜂巢帘 布艺窗帘 无绳 智能电动 普通电动 全遮光 半遮光";
+
+const T2S={"樓":"楼","廳":"厅","臥":"卧","廚":"厨","陽":"阳","儲":"储","門":"门","寬":"宽","廁":"厕","間":"间","併":"并","衛":"卫","區":"区","會":"会","議":"议","華":"华","園":"园"};
+const t2s=s=>s.replace(/[一-鿿]/g,c=>T2S[c]||c);
+const DIG={"零":0,"〇":0,"一":1,"幺":1,"要":1,"二":2,"两":2,"三":3,"四":4,"五":5,"六":6,"七":7,"八":8,"九":9};
+function cnNum(str){
+  str=str.replace(/[，,。\s]/g,"");
+  if(/^[0-9]+$/.test(str))return parseInt(str,10);
+  if(/[千百十]/.test(str)){let sec=0,num=0;for(const ch of str){if(DIG[ch]!==undefined)num=DIG[ch];else if(ch==="十"){sec+=(num||1)*10;num=0;}else if(ch==="百"){sec+=(num||1)*100;num=0;}else if(ch==="千"){sec+=(num||1)*1000;num=0;}}return (sec+num)||null;}
+  let out="";for(const ch of str){if(DIG[ch]!==undefined)out+=DIG[ch];}return out?parseInt(out,10):null;
+}
+function findNum(text,keys){for(const k of keys){const m=text.match(new RegExp(k+"[度宽高]?[:：，, ]*([0-9零〇一二两三四五六七八九十百千幺要]+)"));if(m){const n=cnNum(m[1]);if(n)return n;}}return"";}
+function matchVocab(text,list){for(const v of list){if(text.includes(v))return v;}return"";}
+function parseTranscript(raw){
+  const text=t2s(raw);
+  let chunks=text.split(/下一个|下一個/).map(s=>s.trim()).filter(Boolean);
+  if(chunks.length<=1)chunks=text.split(/(?=窗[一二三四五12345])/).map(s=>s.trim()).filter(Boolean);
+  return chunks.map(c=>({floor:matchVocab(c,VOCAB.floor),room:matchVocab(c,VOCAB.room),type:matchVocab(c,VOCAB.type)||"窗",width:findNum(c,["宽","门框宽","宽度"]),height:findNum(c,["高","门框高","高度"]),depth:findNum(c,["进深","近深"]),notes:""}));
+}
+
+const $=id=>document.getElementById(id);
+const status=(m,bad)=>{const s=$('status');s.textContent=m;s.className=bad?'danger':'';};
+
+// remember key
+const KEY_STORE='bm_openai_key';
+(function(){try{const s=localStorage.getItem(KEY_STORE);if(s){$('apiKey').value=s;$('remember').checked=true;}}catch(e){}})();
+function persistKey(){try{if($('remember').checked&&$('apiKey').value.trim())localStorage.setItem(KEY_STORE,$('apiKey').value.trim());else localStorage.removeItem(KEY_STORE);}catch(e){}}
+$('remember').addEventListener('change',persistKey);
+$('apiKey').addEventListener('input',()=>{if($('remember').checked)persistKey();});
+$('clearKey').addEventListener('click',()=>{try{localStorage.removeItem(KEY_STORE);}catch(e){}$('apiKey').value='';$('remember').checked=false;status('已清除 Key cleared.');});
+
+// window cards
+function opt(list,val){let o='<option value=""></option>';for(const v of list)o+=`<option ${v===val?'selected':''}>${v}</option>`;return o;}
+function addCard(r={}){
+  const box=$('cards');const i=box.children.length+1;
+  const d=document.createElement('div');d.className='wcard';
+  d.innerHTML=`<div class="wh"><b>窗户 Window ${i}</b><button class="del" type="button">删除 ✕</button></div>
+    <div class="fld"><span class="lbl">楼层 Floor</span><select data-k="floor">${opt(VOCAB.floor,r.floor)}</select></div>
+    <div class="fld"><span class="lbl">房间 Room</span><select data-k="room">${opt(VOCAB.room,r.room)}</select></div>
+    <div class="fld"><span class="lbl">窗/门 Type</span><select data-k="type">${opt(VOCAB.type,r.type)}</select></div>
+    <div class="two"><div class="fld"><span class="lbl">宽 W (mm)</span><input data-k="width" inputmode="numeric" value="${r.width??''}"></div>
+      <div class="fld"><span class="lbl">高 H (mm)</span><input data-k="height" inputmode="numeric" value="${r.height??''}"></div></div>
+    <div class="two"><div class="fld"><span class="lbl">进深 (mm)</span><input data-k="depth" inputmode="numeric" value="${r.depth??''}"></div>
+      <div class="fld"><span class="lbl">备注 Notes</span><input data-k="notes" value="${r.notes??''}"></div></div>`;
+  d.querySelector('.del').addEventListener('click',()=>{d.remove();renumber();});
+  box.appendChild(d);
+}
+function renumber(){[...$('cards').children].forEach((c,i)=>c.querySelector('.wh b').textContent=`窗户 Window ${i+1}`);}
+
+// audio
+let audioBlob=null,mediaRec=null,recChunks=[];
+$('fileInput').addEventListener('change',e=>{audioBlob=e.target.files[0]||null;if(audioBlob){const p=$('player');p.src=URL.createObjectURL(audioBlob);p.style.display='block';$('transcribeBtn').disabled=false;status('已加载 Loaded: '+audioBlob.name);}});
+$('recBtn').addEventListener('click',async()=>{
+  if(mediaRec&&mediaRec.state==='recording'){mediaRec.stop();return;}
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    mediaRec=new MediaRecorder(stream);recChunks=[];
+    mediaRec.ondataavailable=e=>recChunks.push(e.data);
+    mediaRec.onstop=()=>{audioBlob=new Blob(recChunks,{type:'audio/webm'});const p=$('player');p.src=URL.createObjectURL(audioBlob);p.style.display='block';$('transcribeBtn').disabled=false;$('recBtn').textContent='● 开始录音 Record';$('recBtn').classList.remove('active');status('录音完成 Recording captured.');};
+    mediaRec.start();$('recBtn').textContent='■ 停止 Stop';$('recBtn').classList.add('active');status('录音中… 说完点停止。');
+  }catch(err){status('麦克风不可用 Mic unavailable: '+err.message,true);$('micNote').textContent='On a phone, in-page recording needs the page to be hosted (https). For now: record with your phone’s Voice Memos app, then use Upload above.';}
+});
+$('transcribeBtn').addEventListener('click',async()=>{
+  const key=$('apiKey').value.trim();
+  if(!key){status('先输入 OpenAI key。',true);return;}
+  if(!audioBlob){status('先录音或上传。',true);return;}
+  status('识别中… Transcribing…');$('transcribeBtn').disabled=true;
+  try{
+    const fd=new FormData();fd.append('file',audioBlob,audioBlob.name||'audio.webm');fd.append('model','whisper-1');fd.append('language','zh');fd.append('prompt',VOCAB_PROMPT);
+    const res=await fetch('https://api.openai.com/v1/audio/transcriptions',{method:'POST',headers:{'Authorization':'Bearer '+key},body:fd});
+    const data=await res.json();
+    if(data.error)status('OpenAI: '+data.error.message,true);
+    else{$('transcript').value=data.text||'';status('完成 Done — 核对文字后拆分。');}
+  }catch(err){status('网络错误 Network error: '+err.message,true);}
+  $('transcribeBtn').disabled=false;
+});
+$('parseBtn').addEventListener('click',()=>{
+  const raw=$('transcript').value.trim();if(!raw){status('没有文字可拆分。',true);return;}
+  $('cards').innerHTML='';parseTranscript(raw).forEach(addCard);status('已拆分 '+$('cards').children.length+' 个窗户。');
+});
+$('addRow').addEventListener('click',()=>addCard());
+$('exportBtn').addEventListener('click',()=>{
+  const rows=[['#','楼层','房间','窗/门','宽(mm)','高(mm)','进深(mm)','备注'].join(',')];
+  [...$('cards').children].forEach((c,i)=>{
+    const g=k=>{const el=c.querySelector(`[data-k="${k}"]`);return '"'+(el?el.value:'')+'"';};
+    rows.push([i+1,g('floor'),g('room'),g('type'),g('width'),g('height'),g('depth'),g('notes')].join(','));
+  });
+  const blob=new Blob(["﻿"+rows.join("\n")],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='measurement.csv';a.click();
+});
+</script>
+</body>
+</html>
