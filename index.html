@@ -32,7 +32,6 @@
   audio{width:100%;margin-top:12px;}
   .chk{display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:400;font-size:14px;}
   .chk input{width:auto;}
-  /* window cards */
   .wcard{border:1px solid #e2e6da;border-radius:12px;padding:12px;margin-bottom:12px;background:var(--light);}
   .wcard .wh{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
   .wcard .wh b{font-size:15px;color:var(--dark);}
@@ -49,9 +48,7 @@
   <h1>B&M 倍美窗帘 · 测量 Mobile</h1>
   <p>录音 → 识别 → 核对窗户 → 导出</p>
 </header>
-
 <div class="wrap">
-
   <div class="card">
     <div class="step">① OpenAI Key</div>
     <input type="password" id="apiKey" placeholder="sk-...">
@@ -59,7 +56,6 @@
     <button class="btn secondary" id="clearKey" type="button" style="margin-top:8px;">忘记 Forget saved key</button>
     <p class="muted">Saved only on this phone, sent only to OpenAI. Tap Forget on shared devices.</p>
   </div>
-
   <div class="card">
     <div class="step">② 录音 Recording</div>
     <button class="btn rec" id="recBtn" type="button">● 开始录音 Record</button>
@@ -71,22 +67,18 @@
     <div id="status"></div>
     <p class="muted" id="micNote"></p>
   </div>
-
   <div class="card">
     <div class="step">③ 文字 Transcript</div>
     <textarea id="transcript" placeholder="识别出的中文会显示在这里，可手动修改。"></textarea>
     <button class="btn secondary" id="parseBtn">拆分窗户 Parse ▼</button>
   </div>
-
   <div class="card">
     <div class="step">④ 窗户 Windows</div>
     <div id="cards"></div>
     <button class="btn secondary" id="addRow" type="button">+ 添加窗户 Add window</button>
     <button class="btn dark" id="exportBtn" type="button">导出 CSV ⤓</button>
   </div>
-
 </div>
-
 <script>
 const VOCAB = {
   floor: ["地下一楼","一楼","二楼","三楼"],
@@ -96,7 +88,6 @@ const VOCAB = {
 const VOCAB_PROMPT = "B&M 窗帘测量。宽 高 进深 层高 下一个 幺 两 "
   + VOCAB.floor.join(" ")+" "+VOCAB.room.join(" ")+" "+VOCAB.type.join(" ")
   + " 内装 外装 单层卷帘 斑马帘 蜂巢帘 布艺窗帘 无绳 智能电动 普通电动 全遮光 半遮光";
-
 const T2S={"樓":"楼","廳":"厅","臥":"卧","廚":"厨","陽":"阳","儲":"储","門":"门","寬":"宽","廁":"厕","間":"间","併":"并","衛":"卫","區":"区","會":"会","議":"议","華":"华","園":"园"};
 const t2s=s=>s.replace(/[一-鿿]/g,c=>T2S[c]||c);
 const DIG={"零":0,"〇":0,"一":1,"幺":1,"要":1,"二":2,"两":2,"三":3,"四":4,"五":5,"六":6,"七":7,"八":8,"九":9};
@@ -114,19 +105,14 @@ function parseTranscript(raw){
   if(chunks.length<=1)chunks=text.split(/(?=窗[一二三四五12345])/).map(s=>s.trim()).filter(Boolean);
   return chunks.map(c=>({floor:matchVocab(c,VOCAB.floor),room:matchVocab(c,VOCAB.room),type:matchVocab(c,VOCAB.type)||"窗",width:findNum(c,["宽","门框宽","宽度"]),height:findNum(c,["高","门框高","高度"]),depth:findNum(c,["进深","近深"]),notes:""}));
 }
-
 const $=id=>document.getElementById(id);
 const status=(m,bad)=>{const s=$('status');s.textContent=m;s.className=bad?'danger':'';};
-
-// remember key
 const KEY_STORE='bm_openai_key';
 (function(){try{const s=localStorage.getItem(KEY_STORE);if(s){$('apiKey').value=s;$('remember').checked=true;}}catch(e){}})();
 function persistKey(){try{if($('remember').checked&&$('apiKey').value.trim())localStorage.setItem(KEY_STORE,$('apiKey').value.trim());else localStorage.removeItem(KEY_STORE);}catch(e){}}
 $('remember').addEventListener('change',persistKey);
 $('apiKey').addEventListener('input',()=>{if($('remember').checked)persistKey();});
 $('clearKey').addEventListener('click',()=>{try{localStorage.removeItem(KEY_STORE);}catch(e){}$('apiKey').value='';$('remember').checked=false;status('已清除 Key cleared.');});
-
-// window cards
 function opt(list,val){let o='<option value=""></option>';for(const v of list)o+=`<option ${v===val?'selected':''}>${v}</option>`;return o;}
 function addCard(r={}){
   const box=$('cards');const i=box.children.length+1;
@@ -143,19 +129,34 @@ function addCard(r={}){
   box.appendChild(d);
 }
 function renumber(){[...$('cards').children].forEach((c,i)=>c.querySelector('.wh b').textContent=`窗户 Window ${i+1}`);}
-
-// audio
-let audioBlob=null,mediaRec=null,recChunks=[];
+let audioBlob=null,mediaRec=null,recChunks=[],recExt='m4a';
+function pickMime(){
+  const cands=['audio/webm','audio/mp4','audio/aac','audio/mpeg'];
+  if(window.MediaRecorder && MediaRecorder.isTypeSupported){
+    for(const t of cands){ if(MediaRecorder.isTypeSupported(t)) return t; }
+  }
+  return '';
+}
+function extFor(mime){mime=mime||'';if(mime.includes('webm'))return'webm';if(mime.includes('mp4')||mime.includes('aac'))return'm4a';if(mime.includes('mpeg'))return'mp3';return'm4a';}
 $('fileInput').addEventListener('change',e=>{audioBlob=e.target.files[0]||null;if(audioBlob){const p=$('player');p.src=URL.createObjectURL(audioBlob);p.style.display='block';$('transcribeBtn').disabled=false;status('已加载 Loaded: '+audioBlob.name);}});
 $('recBtn').addEventListener('click',async()=>{
   if(mediaRec&&mediaRec.state==='recording'){mediaRec.stop();return;}
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-    mediaRec=new MediaRecorder(stream);recChunks=[];
-    mediaRec.ondataavailable=e=>recChunks.push(e.data);
-    mediaRec.onstop=()=>{audioBlob=new Blob(recChunks,{type:'audio/webm'});const p=$('player');p.src=URL.createObjectURL(audioBlob);p.style.display='block';$('transcribeBtn').disabled=false;$('recBtn').textContent='● 开始录音 Record';$('recBtn').classList.remove('active');status('录音完成 Recording captured.');};
+    const mime=pickMime();recChunks=[];
+    mediaRec = mime ? new MediaRecorder(stream,{mimeType:mime}) : new MediaRecorder(stream);
+    mediaRec.ondataavailable=e=>{if(e.data&&e.data.size>0)recChunks.push(e.data);};
+    mediaRec.onstop=()=>{
+      const actual=(mediaRec.mimeType||mime||'audio/mp4').split(';')[0];
+      recExt=extFor(actual);
+      audioBlob=new Blob(recChunks,{type:actual});
+      stream.getTracks().forEach(t=>t.stop());
+      const p=$('player');p.src=URL.createObjectURL(audioBlob);p.style.display='block';
+      $('transcribeBtn').disabled=false;$('recBtn').textContent='● 开始录音 Record';$('recBtn').classList.remove('active');
+      status('录音完成 Recording captured ('+recExt+').');
+    };
     mediaRec.start();$('recBtn').textContent='■ 停止 Stop';$('recBtn').classList.add('active');status('录音中… 说完点停止。');
-  }catch(err){status('麦克风不可用 Mic unavailable: '+err.message,true);$('micNote').textContent='On a phone, in-page recording needs the page to be hosted (https). For now: record with your phone’s Voice Memos app, then use Upload above.';}
+  }catch(err){status('麦克风不可用 Mic unavailable: '+err.message,true);$('micNote').textContent='If the mic stays blocked: record with your phone Voice Memos app, then use Upload above.';}
 });
 $('transcribeBtn').addEventListener('click',async()=>{
   const key=$('apiKey').value.trim();
@@ -163,7 +164,8 @@ $('transcribeBtn').addEventListener('click',async()=>{
   if(!audioBlob){status('先录音或上传。',true);return;}
   status('识别中… Transcribing…');$('transcribeBtn').disabled=true;
   try{
-    const fd=new FormData();fd.append('file',audioBlob,audioBlob.name||'audio.webm');fd.append('model','whisper-1');fd.append('language','zh');fd.append('prompt',VOCAB_PROMPT);
+    const fname=audioBlob.name||('audio.'+recExt);
+    const fd=new FormData();fd.append('file',audioBlob,fname);fd.append('model','whisper-1');fd.append('language','zh');fd.append('prompt',VOCAB_PROMPT);
     const res=await fetch('https://api.openai.com/v1/audio/transcriptions',{method:'POST',headers:{'Authorization':'Bearer '+key},body:fd});
     const data=await res.json();
     if(data.error)status('OpenAI: '+data.error.message,true);
@@ -179,7 +181,7 @@ $('addRow').addEventListener('click',()=>addCard());
 $('exportBtn').addEventListener('click',()=>{
   const rows=[['#','楼层','房间','窗/门','宽(mm)','高(mm)','进深(mm)','备注'].join(',')];
   [...$('cards').children].forEach((c,i)=>{
-    const g=k=>{const el=c.querySelector(`[data-k="${k}"]`);return '"'+(el?el.value:'')+'"';};
+    const g=k=>{const el=c.querySelector('[data-k="'+k+'"]');return '"'+(el?el.value:'')+'"';};
     rows.push([i+1,g('floor'),g('room'),g('type'),g('width'),g('height'),g('depth'),g('notes')].join(','));
   });
   const blob=new Blob(["﻿"+rows.join("\n")],{type:'text/csv;charset=utf-8'});
