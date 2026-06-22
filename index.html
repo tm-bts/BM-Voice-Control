@@ -173,9 +173,24 @@ $('transcribeBtn').addEventListener('click',async()=>{
   }catch(err){status('网络错误 Network error: '+err.message,true);}
   $('transcribeBtn').disabled=false;
 });
-$('parseBtn').addEventListener('click',()=>{
+async function llmParse(raw){
+  const key=$('apiKey').value.trim();
+  if(!key) throw new Error('no key');
+  const sys="You extract window measurements from a Chinese voice transcript for a curtain (窗帘) company. Return ONLY JSON shaped like {\"windows\":[{\"floor\":\"\",\"room\":\"\",\"type\":\"\",\"width\":0,\"height\":0,\"depth\":\"\",\"notes\":\"\"}]}. Rules: a transcript usually contains SEVERAL windows - output one object per window. Windows may be separated by 下一个, by a new room name, or by a new 窗号; a new 宽 starting after a 高 also means a new window. width/height/depth are integers in millimetres; convert Chinese numerals (幺 and 要 = 1; digit strings like 幺八三零 = 1830; 两千一 = 2100; 两千四百五 = 2450); depth is often missing -> empty string. floor must be one of: "+VOCAB.floor.join(", ")+" or empty. room must be one of: "+VOCAB.room.join(", ")+" or empty. type must be one of: "+VOCAB.type.join(", ")+". Normalise traditional Chinese to simplified. Put anything uncertain into notes. Output JSON only.";
+  const res=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model:'gpt-4o-mini',temperature:0,response_format:{type:'json_object'},messages:[{role:'system',content:sys},{role:'user',content:raw}]})});
+  const data=await res.json();
+  if(data.error) throw new Error(data.error.message);
+  const obj=JSON.parse(data.choices[0].message.content);
+  const arr=Array.isArray(obj)?obj:(obj.windows||obj.list||obj.data||[]);
+  return arr.map(w=>({floor:w.floor||'',room:w.room||'',type:w.type||'窗',width:w.width||'',height:w.height||'',depth:w.depth||'',notes:w.notes||''}));
+}
+$('parseBtn').addEventListener('click',async()=>{
   const raw=$('transcript').value.trim();if(!raw){status('没有文字可拆分。',true);return;}
-  $('cards').innerHTML='';parseTranscript(raw).forEach(addCard);status('已拆分 '+$('cards').children.length+' 个窗户。');
+  status('拆分中… Parsing…');
+  let rows;
+  try{ rows=await llmParse(raw); status('AI 拆分 '+rows.length+' 个窗户。'); }
+  catch(e){ rows=parseTranscript(raw); status('拆分 '+rows.length+' 个窗户（基础模式 '+(e.message||e)+'）。'); }
+  $('cards').innerHTML=''; rows.forEach(addCard);
 });
 $('addRow').addEventListener('click',()=>addCard());
 $('exportBtn').addEventListener('click',()=>{
